@@ -372,3 +372,82 @@ class FFmpegAV1VulkanDecoder(FFmpegVulkanDecoder):
     """FFmpeg Vulkan decoder for AV1"""
 
     codec = Codec.AV1
+
+
+def output_format_to_ffformat_v4l2request(output_format: OutputFormat) -> str:
+    """Return GStreamer pixel format"""
+    mapping = {
+        OutputFormat.YUV420P: "nv12",
+        OutputFormat.YUV422P: "nv16",
+        OutputFormat.YUV420P10LE: "nv15",
+        OutputFormat.YUV422P10LE: "nv20",
+    }
+    if output_format not in mapping:
+        raise Exception(
+            f"No matching output format found in FFmpeg for {output_format}"
+        )
+    return mapping[output_format]
+
+
+class FFmpegV4L2RequestDecoder(FFmpegDecoder):
+    """Generic class for FFmpeg V4L2-request decoder"""
+
+    hw_acceleration = True
+    hw_download = True
+    api = "drm"
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.cmd += (
+            f" -hwaccel_output_format drm_prime -hwaccel_device /dev/dri/renderD128"
+        )
+        self.name = f"FFmpeg-{self.codec.value}-V4L2-request"
+
+    def ffmpeg_cmd(
+        self,
+        input_filepath: str,
+        output_filepath: str,
+        output_format: OutputFormat,
+        output_sink: str,
+    ) -> List[str]:
+        download = f"hwdownload,format={output_format_to_ffformat_v4l2request(output_format)},"
+        cmd = shlex.split(
+            FFMPEG_TPL.format(
+                self.cmd,
+                input_filepath,
+                "-fps_mode passthrough",
+                download,
+                str(output_format.value),
+                output_sink,
+                output_filepath,
+            )
+        )
+        return cmd
+
+
+@register_decoder
+class FFmpegH264V4L2RequestDecoder(FFmpegV4L2RequestDecoder):
+    """FFmpeg V4L2-request decoder for H.264"""
+
+    codec = Codec.H264
+
+
+@register_decoder
+class FFmpegH265V4L2RequestDecoder(FFmpegV4L2RequestDecoder):
+    """FFmpeg V4L2-request decoder for H.265"""
+
+    codec = Codec.H265
+
+
+@register_decoder
+class FFmpegVP8V4L2RequestDecoder(FFmpegV4L2RequestDecoder):
+    """FFmpeg V4L2-request decoder for VP8"""
+
+    codec = Codec.VP8
+
+
+@register_decoder
+class FFmpegVP9V4L2RequestDecoder(FFmpegV4L2RequestDecoder):
+    """FFmpeg V4L2-request decoder for VP9"""
+
+    codec = Codec.VP9
