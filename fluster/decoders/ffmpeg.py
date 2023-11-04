@@ -25,9 +25,9 @@ import re
 
 from fluster.codec import Codec, OutputFormat
 from fluster.decoder import Decoder, register_decoder
-from fluster.utils import file_checksum, run_command
+from fluster.utils import file_checksum, run_command, run_pipe_command_with_std_output
 
-FFMPEG_TPL = "{} -i {} {} -vf {}format=pix_fmts={} -f rawvideo {}"
+FFMPEG_TPL = "{} -i {} {} -vf {}format=pix_fmts={} -f {} {}"
 
 
 def output_format_to_ffformat(output_format: OutputFormat) -> str:
@@ -55,6 +55,7 @@ class FFmpegDecoder(Decoder):
     wrapper = False
     hw_download = False
     init_device = ""
+    md5 = True
 
     def __init__(self) -> None:
         super().__init__()
@@ -78,7 +79,11 @@ class FFmpegDecoder(Decoder):
         return version
 
     def ffmpeg_cmd(
-        self, input_filepath: str, output_filepath: str, output_format: OutputFormat
+        self,
+        input_filepath: str,
+        output_filepath: str,
+        output_format: OutputFormat,
+        output_sink: str,
     ) -> List[str]:
         """Returns the formatted ffmpeg command based on the current ffmpeg version"""
         version = self.ffmpeg_version()
@@ -93,6 +98,7 @@ class FFmpegDecoder(Decoder):
                     "-fps_mode passthrough",
                     download,
                     str(output_format.value),
+                    output_sink,
                     output_filepath,
                 )
             )
@@ -104,10 +110,24 @@ class FFmpegDecoder(Decoder):
                     "-vsync passthrough",
                     download,
                     str(output_format.value),
+                    output_sink,
                     output_filepath,
                 )
             )
         return cmd
+
+    def parse_md5sum(self, data: List[str], verbose: bool) -> str:
+        md5sum = None
+        for line in data:
+            if verbose:
+                print(line)
+            if line.startswith("MD5="):
+                md5sum = line[4:36]
+                if not verbose:
+                    return md5sum
+        if not md5sum:
+            raise Exception("No MD5 found in the program trace.")
+        return md5sum
 
     def decode(
         self,
@@ -120,7 +140,15 @@ class FFmpegDecoder(Decoder):
     ) -> str:
         """Decodes input_filepath in output_filepath"""
         # pylint: disable=unused-argument
-        cmd = self.ffmpeg_cmd(input_filepath, output_filepath, output_format)
+        if self.md5 and not keep_files:
+            cmd = self.ffmpeg_cmd(input_filepath, "-", output_format, "md5")
+            data = run_pipe_command_with_std_output(
+                cmd, timeout=timeout, verbose=verbose
+            )
+            return self.parse_md5sum(data, verbose)
+        cmd = self.ffmpeg_cmd(
+            input_filepath, output_filepath, output_format, "rawvideo"
+        )
         run_command(cmd, timeout=timeout, verbose=verbose)
         return file_checksum(output_filepath)
 
