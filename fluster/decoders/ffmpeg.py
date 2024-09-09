@@ -497,6 +497,8 @@ class FFmpegV4L2RequestDecoder(FFmpegDecoder):
     hw_download_mapping = {
         OutputFormat.YUV420P: "nv12",
         OutputFormat.YUV422P: "nv16",
+        OutputFormat.YUV420P10LE: "nv15",
+        OutputFormat.YUV422P10LE: "nv20",
     }
 
 
